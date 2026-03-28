@@ -13,7 +13,7 @@ Fallback DOM si l'API ne répond pas en JSON exploitable :
   - Image : img.product-card-image-new__content
   - Badge : p.sticker-promo__text
 """
-import asyncio
+import re
 import time
 from playwright.async_api import async_playwright
 from .base import BaseScraper
@@ -88,8 +88,7 @@ def _extract_promos_from_item(item: dict) -> list[dict]:
                     badge = promo_info.get("label")
                     # Extraire le % depuis le libellé ("30% d'économies" → 30)
                     if badge:
-                        import re as _re
-                        m = _re.search(r"(\d+)\s*%", badge)
+                        m = re.search(r"(\d+)\s*%", badge)
                         if m:
                             disc_pct = float(m.group(1))
                     # Prix barré éventuel
@@ -172,30 +171,50 @@ class CarrefourScraper(BaseScraper):
                     pass
 
                 # Scroll + clic "Charger plus" pour déclencher tous les appels API
+                # Debug one-shot : voir les textes des boutons présents
+                try:
+                    btns_debug = await page.evaluate("""() =>
+                        [...document.querySelectorAll('button, [role="button"]')]
+                        .map(b => b.innerText?.trim()).filter(t => t && t.length < 50)
+                        .slice(0, 20)
+                    """)
+                    print(f"[CARREFOUR DEBUG] Boutons: {btns_debug}")
+                except Exception:
+                    pass
+
                 prev_api = 0
                 no_new_streak = 0
                 _t0 = time.monotonic()
+                print("[CARREFOUR] Début scroll…")
                 for _ in range(200):
-                    if self.is_cancelled() or (time.monotonic() - _t0) > 240:
+                    if self.is_cancelled() or (time.monotonic() - _t0) > 600:
                         print(f"[CARREFOUR] Arrêt — {len(api_products)} produits collectés")
                         break
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(500)
+                    await page.wait_for_timeout(600)
 
-                    # Attendre que le bouton "Charger plus" soit présent, puis cliquer
-                    btn_sel = "button:has-text('Charger plus'), button:has-text('Voir plus'), button:has-text('Afficher plus')"
+                    clicked = False
                     try:
-                        await page.wait_for_selector(btn_sel, timeout=1_500)
-                        await page.locator(btn_sel).first.click(timeout=2_000)
-                        await page.wait_for_timeout(1_200)
+                        clicked = await page.evaluate("""() => {
+                            const btn = [...document.querySelectorAll('button, [role="button"]')].find(b => {
+                                const t = (b.innerText || b.textContent || '').trim().toLowerCase();
+                                return t && (t.includes('charger') || t.includes('voir plus')
+                                          || t.includes('afficher plus') || t.includes('load more')
+                                          || t.includes('suivant') || t.includes('plus de'));
+                            });
+                            if (btn) { btn.scrollIntoView(); btn.click(); return true; }
+                            return false;
+                        }""")
                     except Exception:
                         pass
+                    if clicked:
+                        await page.wait_for_timeout(1_000)
 
                     api_now = len(api_products)
-                    print(f"[CARREFOUR] API:{api_now}…")
+                    print(f"[CARREFOUR] clicked={clicked} API:{api_now}…")
                     if api_now == prev_api:
                         no_new_streak += 1
-                        if no_new_streak >= 10:
+                        if no_new_streak >= 20:
                             break
                     else:
                         no_new_streak = 0
