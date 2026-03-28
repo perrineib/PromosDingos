@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PromosDingo 🛒</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+/* ── Variables ─────────────────────────────────────────── */
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --border: #e0e4ea;
+  --text: #1a1d23;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --radius: 12px;
+  --shadow: 0 2px 12px rgba(0,0,0,.08);
+
+  --lidl:       #0050aa;
+  --carrefour:  #004899;
+  --auchan:     #e96c00;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+
+.logo { font-size: 1.3rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.logo span { font-weight: 400; color: var(--muted); font-size: 0.9rem; margin-left: 4px; }
+
+nav { display: flex; gap: 0; margin-left: auto; }
+nav button {
+  background: none;
+  border: none;
+  padding: .4rem 1.1rem;
+  font-size: .95rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+}
+nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+nav button:hover { color: var(--text); }
+
+/* ── Refresh / Cancel buttons ───────────────────────────── */
+#refreshBtn, #cancelBtn {
+  display: flex; align-items: center; gap: .5rem;
+  border: none; border-radius: 8px;
+  padding: .45rem 1rem; font-size: .9rem; font-weight: 600;
+  cursor: pointer; transition: opacity .15s; white-space: nowrap;
+}
+#refreshBtn { background: var(--accent); color: #fff; }
+#cancelBtn  { background: #dc2626; color: #fff; }
+#refreshBtn:hover, #cancelBtn:hover { opacity: .88; }
+#refreshBtn:disabled { opacity: .55; cursor: not-allowed; }
+#refreshBtn .spin { display: none; animation: spin .8s linear infinite; }
+#refreshBtn.loading .spin { display: inline; }
+#refreshBtn.loading .icon { display: none; }
+.btn-store-refresh {
+  border: none; border-radius: 8px;
+  padding: .38rem .75rem; font-size: .82rem; font-weight: 600;
+  color: #fff; cursor: pointer; opacity: .85; transition: opacity .15s;
+}
+.btn-store-refresh:hover { opacity: 1; }
+.btn-store-refresh:disabled { opacity: .4; cursor: not-allowed; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Progress panel ─────────────────────────────────────── */
+#progressBar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: .6rem 1.5rem;
+  display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center;
+}
+.store-prog {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .85rem; font-weight: 500;
+}
+.store-prog .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-pending  { background: #d1d5db; }
+.dot-running  { background: #f59e0b; animation: pulse .8s ease-in-out infinite; }
+.dot-done     { background: #22c55e; }
+.dot-annulé   { background: #9ca3af; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+#statusMsg {
+  font-size: .8rem; color: var(--muted); text-align: right;
+  white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Filters ───────────────────────────────────────────── */
+#filters {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: .75rem 1.5rem;
+  display: flex; flex-wrap: wrap; gap: .75rem; align-items: center;
+  position: sticky; top: 60px; z-index: 99;
+}
+
+/* Store chips */
+.store-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip {
+  padding: .3rem .85rem; border-radius: 20px;
+  border: 2px solid currentColor;
+  font-size: .82rem; font-weight: 600; cursor: pointer;
+  transition: all .15s; opacity: .45;
+  background: transparent;
+  display: flex; align-items: center; gap: .35rem;
+}
+.chip.active { opacity: 1; color: #fff; }
+.chip[data-store="lidl"]       { color: var(--lidl); }
+.chip[data-store="carrefour"]  { color: var(--carrefour); }
+.chip[data-store="auchan"]     { color: var(--auchan); }
+.chip[data-store="lidl"].active       { background: var(--lidl);      border-color: var(--lidl);      color: #fff; }
+.chip[data-store="carrefour"].active  { background: var(--carrefour); border-color: var(--carrefour); color: #fff; }
+.chip[data-store="auchan"].active     { background: var(--auchan);    border-color: var(--auchan);    color: #fff; }
+
+.chip .count {
+  background: rgba(255,255,255,.3); border-radius: 10px;
+  padding: 0 .4rem; font-size: .75rem;
+}
+.chip:not(.active) .count { background: currentColor; color: #fff; }
+
+select, input[type="text"] {
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: .38rem .75rem; font-size: .88rem;
+  background: var(--surface); color: var(--text);
+  outline: none;
+}
+select:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+#searchInput { width: 200px; }
+
+.filter-label { font-size: .8rem; color: var(--muted); font-weight: 500; }
+#resultCount { font-size: .85rem; color: var(--muted); margin-left: auto; }
+
+/* ── Main content ──────────────────────────────────────── */
+main { padding: 1.5rem; }
+
+/* ── Cards grid ────────────────────────────────────────── */
+#grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: transform .15s, box-shadow .15s;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+
+.card-img {
+  width: 100%; aspect-ratio: 4/3; object-fit: contain;
+  background: #f8f9fa; padding: .5rem;
+}
+.card-img-placeholder {
+  width: 100%; aspect-ratio: 4/3;
+  background: linear-gradient(135deg, #f0f2f5 0%, #e5e7eb 100%);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.5rem; color: #d1d5db;
+}
+
+.card-body { padding: .75rem; flex: 1; display: flex; flex-direction: column; gap: .4rem; }
+
+.card-meta { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.badge-store {
+  font-size: .7rem; font-weight: 700; padding: .15rem .5rem;
+  border-radius: 4px; color: #fff; text-transform: uppercase;
+}
+.badge-store[data-store="lidl"]       { background: var(--lidl); }
+.badge-store[data-store="carrefour"]  { background: var(--carrefour); }
+.badge-store[data-store="auchan"]     { background: var(--auchan); }
+
+.badge-cat {
+  font-size: .7rem; color: var(--muted);
+  background: var(--bg); border-radius: 4px;
+  padding: .15rem .4rem; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.card-name {
+  font-weight: 600; font-size: .92rem; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.card-prices { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.price-promo { font-size: 1.25rem; font-weight: 700; color: #dc2626; }
+.price-orig  { font-size: .85rem; color: var(--muted); text-decoration: line-through; }
+.price-na    { font-size: .85rem; color: var(--muted); }
+
+.badge-discount {
+  background: #fef2f2; color: #dc2626;
+  font-size: .78rem; font-weight: 700;
+  padding: .2rem .5rem; border-radius: 6px;
+  margin-left: auto;
+}
+
+.card-validity { font-size: .75rem; color: var(--muted); margin-top: auto; }
+.card-desc {
+  font-size: .78rem; color: #7c3aed; font-weight: 600;
+  background: #f5f3ff; border-radius: 6px;
+  padding: .2rem .5rem; margin-top: .3rem;
+  display: inline-block;
+}
+.price-label { font-size: .7rem; color: var(--muted); margin-right: .2rem; }
+
+/* ── Empty / Loading ───────────────────────────────────── */
+#emptyState {
+  grid-column: 1/-1; text-align: center; padding: 4rem 1rem;
+  color: var(--muted);
+}
+#emptyState .icon { font-size: 3rem; margin-bottom: .5rem; }
+
+/* ── Stats tab ─────────────────────────────────────────── */
+#statsTab { display: none; }
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+.stat-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.1rem;
+  display: flex; flex-direction: column; gap: .25rem;
+}
+.stat-card .value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+.stat-card .label { font-size: .85rem; color: var(--muted); }
+
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem; margin-bottom: 1.5rem;
+}
+@media(max-width:700px){ .charts-row { grid-template-columns: 1fr; } }
+
+.chart-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.25rem;
+}
+.chart-card h3 { font-size: 1rem; margin-bottom: 1rem; color: var(--muted); font-weight: 600; }
+.chart-card canvas { max-height: 280px; }
+
+.table-card {
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+.table-card h3 { font-size: 1rem; margin-bottom: 1rem; color: var(--muted); font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th {
+  text-align: left; font-weight: 600; color: var(--muted);
+  padding: .5rem .75rem; border-bottom: 2px solid var(--border);
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
+}
+td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg); }
+
+.pill {
+  display: inline-block; padding: .15rem .55rem;
+  border-radius: 20px; font-size: .75rem; font-weight: 700;
+}
+.pill-red   { background: #fef2f2; color: #dc2626; }
+.pill-green { background: #f0fdf4; color: #16a34a; }
+.pill-blue  { background: #eff6ff; color: #2563eb; }
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">PromosDingo <span>comparateur de promos</span></div>
+
+  <nav>
+    <button class="active" onclick="showTab('promos')">Promotions</button>
+    <button onclick="showTab('stats')">Statistiques</button>
+  </nav>
+
+  <div style="display:flex;flex-direction:column;gap:.1rem;min-width:0">
+    <div id="statusMsg">—</div>
+    <div id="lastUpdateMsg" style="font-size:.72rem;color:var(--muted)"></div>
+  </div>
+
+  <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+    <button id="refreshBtn" onclick="doRefresh()">
+      <span class="icon">↻</span>
+      <span class="spin">⟳</span>
+      Tout
+    </button>
+    <button class="btn-store-refresh" style="background:var(--lidl)"      onclick="doRefresh('lidl')">Lidl</button>
+    <button class="btn-store-refresh" style="background:var(--carrefour)" onclick="doRefresh('carrefour')">Carrefour</button>
+    <button class="btn-store-refresh" style="background:var(--auchan)"    onclick="doRefresh('auchan')">Auchan</button>
+    <button id="cancelBtn" onclick="doCancel()" style="display:none;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:.45rem 1rem;font-size:.9rem;font-weight:600;cursor:pointer">
+      ⏹ Arrêter
+    </button>
+  </div>
+</header>
+
+<!-- ─── Progress bar ─────────────────────────────────── -->
+<div id="progressBar" style="display:none">
+  <div id="storeProgress"></div>
+</div>
+
+<!-- ─── Filters ──────────────────────────────────────── -->
+<div id="filters">
+  <div class="store-chips" id="storeChips">
+    <!-- généré dynamiquement -->
+  </div>
+
+  <span class="filter-label">Catégorie :</span>
+  <select id="catSelect" onchange="applyFilters()">
+    <option value="">Toutes</option>
+  </select>
+
+  <input type="text" id="searchInput" placeholder="🔍 Rechercher…" oninput="applyFilters()"/>
+
+  <span class="filter-label">Trier :</span>
+  <select id="sortSelect" onchange="applyFilters()">
+    <option value="discount">Meilleure réduction</option>
+    <option value="price_asc">Prix ↑</option>
+    <option value="price_desc">Prix ↓</option>
+    <option value="name">Nom</option>
+  </select>
+
+  <span id="resultCount"></span>
+</div>
+
+<!-- ─── Promotions Tab ───────────────────────────────── -->
+<main>
+  <div id="promosTab">
+    <div id="grid">
+      <div id="emptyState">
+        <div class="icon">🛒</div>
+        <p>Aucune promotion en base.</p>
+        <p style="margin-top:.5rem;font-size:.85rem">Clique sur <strong>Actualiser</strong> pour lancer le scraping.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Stats Tab ─────────────────────────────────── -->
+  <div id="statsTab">
+    <div class="stats-grid" id="statsSummary"></div>
+
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Promotions par enseigne</h3>
+        <canvas id="chartStore"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Promotions par catégorie</h3>
+        <canvas id="chartCat"></canvas>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h3>🏆 Top deals (meilleures réductions)</h3>
+      <table id="tableTopDeals">
+        <thead>
+          <tr><th>Produit</th><th>Enseigne</th><th>Prix promo</th><th>Réduction</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="table-card">
+      <h3>🔁 Produits présents dans plusieurs enseignes</h3>
+      <table id="tableMulti">
+        <thead>
+          <tr><th>Produit</th><th>Nb d'enseignes</th><th>Meilleur prix</th><th>Meilleure remise</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════ */
+const API = '';          // même origine
+const STORES = ['lidl','carrefour','auchan'];
+const STORE_LABELS = { lidl:'Lidl', carrefour:'Carrefour', auchan:'Auchan' };
+const STORE_COLORS = { lidl:'#0050aa', carrefour:'#004899', auchan:'#e96c00' };
+const CAT_ICONS = {
+  'Épicerie sucrée': '🍫', 'Épicerie salée': '🥫', 'Boissons': '🥤',
+  'Produits frais': '🥛', 'Surgelés': '🧊',
+  'Viande & Charcuterie': '🥩', 'Poissons & Fruits de mer': '🐟',
+  'Fruits & Légumes': '🍎', 'Hygiène & Beauté': '🧴',
+  'Entretien maison': '🧹', 'Bébé': '🍼', 'Animaux': '🐾',
+  'Electroménager': '🍳', 'High-Tech': '📱', 'Textile & Mode': '👕',
+  'Jardin & Bricolage': '🌱', 'Sport & Loisirs': '⚽',
+  'Jouets & Jeux': '🎮', 'Maison & Déco': '🏠', 'Autre': '📦',
+};
+
+let state = {
+  promos: [],
+  stores: [],        // [{store, count}]
+  activeStores: new Set(STORES),
+  activeCategory: '',
+  search: '',
+  sort: 'discount',
+};
+
+let charts = {};
+let refreshInterval = null;
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
+(async function init() {
+  renderStoreChips();
+  await loadStores();
+  await loadCategories();
+  await loadPromos();
+  checkRefreshStatus();
+})();
+
+/* ══════════════════════════════════════════════════════
+   TABS
+══════════════════════════════════════════════════════ */
+function showTab(tab) {
+  document.querySelectorAll('nav button').forEach((b,i) => {
+    b.classList.toggle('active', (tab==='promos' && i===0) || (tab==='stats' && i===1));
+  });
+  document.getElementById('promosTab').style.display = tab === 'promos' ? '' : 'none';
+  document.getElementById('statsTab').style.display  = tab === 'stats'  ? '' : 'none';
+  document.getElementById('filters').style.display   = tab === 'promos' ? '' : 'none';
+  if (tab === 'stats') loadStats();
+}
+
+/* ══════════════════════════════════════════════════════
+   STORES CHIPS
+══════════════════════════════════════════════════════ */
+function renderStoreChips() {
+  const container = document.getElementById('storeChips');
+  container.innerHTML = '';
+  STORES.forEach(store => {
+    const count = (state.stores.find(s => s.store === store) || {}).count || 0;
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (state.activeStores.has(store) ? ' active' : '');
+    chip.dataset.store = store;
+    chip.innerHTML = `${STORE_LABELS[store]} <span class="count">${count}</span>`;
+    chip.onclick = () => toggleStore(store);
+    container.appendChild(chip);
+  });
+}
+
+function toggleStore(store) {
+  if (state.activeStores.has(store)) {
+    if (state.activeStores.size === 1) return;  // garder au moins un
+    state.activeStores.delete(store);
+  } else {
+    state.activeStores.add(store);
+  }
+  document.querySelectorAll('.chip').forEach(c => {
+    c.classList.toggle('active', state.activeStores.has(c.dataset.store));
+  });
+  applyFilters();
+}
+
+/* ══════════════════════════════════════════════════════
+   DATA LOADING
+══════════════════════════════════════════════════════ */
+async function loadStores() {
+  try {
+    state.stores = await fetchJSON('/api/stores');
+    renderStoreChips();
+  } catch(e) {}
+}
+
+async function loadCategories() {
+  try {
+    const cats = await fetchJSON('/api/categories');
+    const sel = document.getElementById('catSelect');
+    sel.innerHTML = '<option value="">Toutes les catégories</option>';
+    cats.forEach(cat => {
+      const icon = CAT_ICONS[cat] || '📦';
+      sel.innerHTML += `<option value="${esc(cat)}">${icon} ${esc(cat)}</option>`;
+    });
+  } catch(e) {}
+}
+
+async function loadPromos() {
+  const params = new URLSearchParams();
+  if (state.activeCategory) params.set('category', state.activeCategory);
+  if (state.search) params.set('search', state.search);
+  params.set('sort', state.sort);
+
+  try {
+    let promos = await fetchJSON('/api/promotions?' + params);
+    // Filtre côté client pour les enseignes (plus réactif)
+    state.promos = promos.filter(p => state.activeStores.has(p.store));
+    renderGrid();
+  } catch(e) {
+    document.getElementById('grid').innerHTML =
+      `<div id="emptyState"><div class="icon">⚠️</div><p>Impossible de charger les promotions.<br/>Le serveur est-il démarré ?</p></div>`;
+  }
+}
+
+function applyFilters() {
+  state.activeCategory = document.getElementById('catSelect').value;
+  state.search = document.getElementById('searchInput').value.trim();
+  state.sort = document.getElementById('sortSelect').value;
+  loadPromos();
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER GRID
+══════════════════════════════════════════════════════ */
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  const promos = state.promos;
+
+  document.getElementById('resultCount').textContent =
+    promos.length > 0 ? `${promos.length} promo${promos.length > 1 ? 's' : ''}` : '';
+
+  if (promos.length === 0) {
+    grid.innerHTML = `<div id="emptyState">
+      <div class="icon">😶</div>
+      <p>Aucune promotion trouvée.</p>
+      <p style="font-size:.85rem;margin-top:.5rem;color:var(--muted)">Essaie de modifier les filtres ou lance un actualisation.</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = promos.map(p => cardHTML(p)).join('');
+}
+
+function cardHTML(p) {
+  const imgHTML = p.image_url
+    ? `<img class="card-img" src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy" onerror="this.outerHTML='<div class=card-img-placeholder>📦</div>'">`
+    : `<div class="card-img-placeholder">${CAT_ICONS[p.category] || '📦'}</div>`;
+
+  const priceHTML = (() => {
+    if (!p.promo_price && !p.original_price) return `<span class="price-na">Prix non disponible</span>`;
+    let html = '';
+    if (p.promo_price)      html += `<span class="price-promo">${p.promo_price.toFixed(2)}&nbsp;€</span>`;
+    if (p.original_price)   html += `<span class="price-orig"><span class="price-label">avant</span>${p.original_price.toFixed(2)}&nbsp;€</span>`;
+    if (p.discount_percent) html += `<span class="badge-discount">−${Math.round(p.discount_percent)}&nbsp;%</span>`;
+    return html;
+  })();
+
+  const descHTML = p.description
+    ? `<div class="card-desc">🏷 ${esc(p.description)}</div>` : '';
+
+  const validityHTML = p.valid_until
+    ? `<div class="card-validity">📅 Jusqu'au ${esc(p.valid_until)}</div>` : '';
+
+  return `<div class="card">
+    ${imgHTML}
+    <div class="card-body">
+      <div class="card-meta">
+        <span class="badge-store" data-store="${esc(p.store)}">${STORE_LABELS[p.store] || p.store}</span>
+        <span class="badge-cat">${esc(p.category || 'Autre')}</span>
+      </div>
+      <div class="card-name" title="${esc(p.name)}">${esc(p.name)}</div>
+      <div class="card-prices">${priceHTML}</div>
+      ${descHTML}
+      ${validityHTML}
+    </div>
+  </div>`;
+}
+
+/* ══════════════════════════════════════════════════════
+   STATS TAB
+══════════════════════════════════════════════════════ */
+async function loadStats() {
+  try {
+    const s = await fetchJSON('/api/stats');
+    renderStatsSummary(s);
+    renderChartStore(s.by_store);
+    renderChartCat(s.by_category);
+    renderTopDeals(s.top_deals);
+    renderMultiStore(s.multi_store);
+  } catch(e) {}
+}
+
+function renderStatsSummary(s) {
+  document.getElementById('statsSummary').innerHTML = `
+    <div class="stat-card"><div class="value">${s.total}</div><div class="label">Promotions en base</div></div>
+    <div class="stat-card"><div class="value">${s.avg_discount}%</div><div class="label">Réduction moyenne</div></div>
+    <div class="stat-card"><div class="value">${s.by_store.length}</div><div class="label">Enseignes actives</div></div>
+    <div class="stat-card"><div class="value">${s.multi_store.length}</div><div class="label">Produits multi-enseignes</div></div>
+  `;
+}
+
+function renderChartStore(data) {
+  destroyChart('chartStore');
+  if (!data.length) return;
+  const ctx = document.getElementById('chartStore');
+  charts.store = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => STORE_LABELS[d.store] || d.store),
+      datasets: [{
+        label: 'Promotions',
+        data: data.map(d => d.count),
+        backgroundColor: data.map(d => STORE_COLORS[d.store] || '#6b7280'),
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+}
+
+function renderChartCat(data) {
+  destroyChart('chartCat');
+  if (!data.length) return;
+  const top = data.slice(0, 10);
+  const ctx = document.getElementById('chartCat');
+  const palette = ['#2563eb','#7c3aed','#db2777','#ea580c','#16a34a',
+                   '#0891b2','#b45309','#dc2626','#4f46e5','#65a30d'];
+  charts.cat = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: top.map(d => `${CAT_ICONS[d.category]||'📦'} ${d.category}`),
+      datasets: [{
+        data: top.map(d => d.count),
+        backgroundColor: palette,
+        borderWidth: 2, borderColor: '#fff',
+      }],
+    },
+    options: {
+      plugins: { legend: { position: 'right', labels: { boxWidth: 14, font: { size: 12 } } } },
+    },
+  });
+}
+
+function renderTopDeals(deals) {
+  const tbody = document.querySelector('#tableTopDeals tbody');
+  if (!deals.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">Aucune donnée</td></tr>'; return; }
+  tbody.innerHTML = deals.map(p => `<tr>
+    <td>${esc(p.name)}</td>
+    <td><span class="badge-store" data-store="${esc(p.store)}" style="background:${STORE_COLORS[p.store]||'#888'};color:#fff;padding:.15rem .5rem;border-radius:4px;font-size:.75rem;font-weight:700">${STORE_LABELS[p.store]||p.store}</span></td>
+    <td>${p.promo_price ? p.promo_price.toFixed(2)+' €' : '—'}</td>
+    <td><span class="pill pill-red">-${Math.round(p.discount_percent||0)}%</span></td>
+  </tr>`).join('');
+}
+
+function renderMultiStore(data) {
+  const tbody = document.querySelector('#tableMulti tbody');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">Aucun produit commun détecté</td></tr>'; return; }
+  tbody.innerHTML = data.map(r => `<tr>
+    <td style="font-weight:500">${esc(r.name)}</td>
+    <td><span class="pill pill-blue">${r.store_count} enseignes</span></td>
+    <td>${r.best_price != null ? r.best_price.toFixed(2)+' €' : '—'}</td>
+    <td>${r.best_discount ? `<span class="pill pill-red">-${Math.round(r.best_discount)}%</span>` : '—'}</td>
+  </tr>`).join('');
+}
+
+function destroyChart(id) {
+  const key = id.replace('chart','').toLowerCase();
+  if (charts[key]) { charts[key].destroy(); charts[key] = null; }
+}
+
+/* ══════════════════════════════════════════════════════
+   REFRESH
+══════════════════════════════════════════════════════ */
+function setRefreshDisabled(disabled) {
+  document.getElementById('refreshBtn').disabled = disabled;
+  document.querySelectorAll('.btn-store-refresh').forEach(b => b.disabled = disabled);
+}
+
+async function doRefresh(store = null) {
+  const btn = document.getElementById('refreshBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  setRefreshDisabled(true);
+  btn.classList.add('loading');
+  cancelBtn.style.display = 'flex';
+  setStatus('Lancement…');
+  document.getElementById('progressBar').style.display = 'flex';
+
+  const url = store ? `/api/refresh?stores=${store}` : '/api/refresh';
+  try {
+    await fetchJSON(url, { method: 'POST' });
+    refreshInterval = setInterval(checkRefreshStatus, 2000);
+  } catch(e) {
+    setRefreshDisabled(false);
+    btn.classList.remove('loading');
+    cancelBtn.style.display = 'none';
+    setStatus('Erreur lors du lancement.');
+  }
+}
+
+async function doCancel() {
+  try {
+    await fetchJSON('/api/refresh/cancel', { method: 'POST' });
+    setStatus('Annulation demandée…');
+  } catch(e) {}
+}
+
+async function checkRefreshStatus() {
+  try {
+    const s = await fetchJSON('/api/refresh/status');
+    setStatus(s.message || '—');
+    renderStoreProgress(s.stores || {});
+
+    if (s.last_run) {
+      const d = new Date(s.last_run + 'Z');
+      document.getElementById('lastUpdateMsg').textContent =
+        'Mise à jour : ' + d.toLocaleDateString('fr-FR') + ' à ' +
+        d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    }
+    if (!s.running) {
+      clearInterval(refreshInterval);
+      const btn = document.getElementById('refreshBtn');
+      setRefreshDisabled(false);
+      btn.classList.remove('loading');
+      document.getElementById('cancelBtn').style.display = 'none';
+      await loadStores();
+      await loadCategories();
+      await loadPromos();
+    }
+  } catch(e) {}
+}
+
+function renderStoreProgress(stores) {
+  const LABELS = { lidl:'Lidl', carrefour:'Carrefour', auchan:'Auchan' };
+  const container = document.getElementById('storeProgress');
+  container.innerHTML = Object.entries(stores).map(([store, info]) => {
+    const label = LABELS[store] || store;
+    const status = info.status || 'pending';
+    const count  = info.count  || 0;
+    const countTxt = status === 'done' ? ` <span style="color:var(--muted)">(${count})</span>` : '';
+    const statusTxt = status === 'running' ? ' en cours…' : status === 'annulé' ? ' annulé' : '';
+    return `<div class="store-prog">
+      <span class="dot dot-${status}"></span>
+      <span>${label}${statusTxt}${countTxt}</span>
+    </div>`;
+  }).join('');
+}
+
+function setStatus(msg) {
+  document.getElementById('statusMsg').textContent = msg;
+}
+
+/* ══════════════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════════════ */
+async function fetchJSON(url, opts = {}) {
+  const res = await fetch(API + url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(res.statusText);
+  return res.json();
+}
+
+function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>

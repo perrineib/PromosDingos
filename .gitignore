@@ -1,0 +1,17 @@
+# Environnement Python
+env_promosdingo/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Base de données
+*.db
+
+# Fichiers de debug
+debug_output/
+debug_*.py
+
+# OS
+.DS_Store
+Thumbs.db
